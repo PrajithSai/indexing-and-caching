@@ -1,0 +1,92 @@
+.select-cache {
+  // width: 25%;
+  margin: 15px;
+}
+.cache-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+.ring {
+  width: 550px;
+  height: 550px;
+  border: 1px solid black;
+  border-radius: 50%;
+  margin: 10px auto;
+}
+.nodes {
+  margin-right: 20px;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+}
+.mss {
+  display: flex;
+  align-self: center;
+}
+.mhs {
+  margin: 10px;
+}
+.mss-1-container,
+.mss-2-container,
+.mss-3-container,
+.mss-4-container {
+  border: 1px solid;
+  padding: 10px;
+  width: 156px;
+}
+.mss-1-container {
+  position: absolute;
+  top: 20%;
+  left: 30%;
+}
+.mss-2-container {
+  position: absolute;
+  top: 20%;
+  left: 48%;
+}
+.mss-3-container {
+  position: absolute;
+  top: 45%;
+  left: 30%;
+}
+.mss-4-container {
+  position: absolute;
+  top: 45%;
+  left: 48%;
+}
+.proxy-1 > .mss-1-container {
+  position: absolute;
+  top: 20%;
+  left: 13%;
+}
+.proxy-1 > .mss-2-container {
+  position: absolute;
+  top: 20%;
+  left: 51%;
+}
+.proxy-2 > .mss-3-container {
+  position: absolute;
+  top: 20%;
+  left: 33%;
+}
+.proxy-1 {
+  height: 16em;
+  border: 1px solid;
+  position: relative;
+  z-index: 10;
+  top: 8%;
+  width: 80%;
+  left: 10%;
+  border-radius: 50%;
+}
+.proxy-2 {
+  height: 16em;
+  border: 1px solid;
+  position: relative;
+  z-index: 10;
+  top: 10%;
+  width: 80%;
+  left: 10%;
+  border-radius: 50%;
+}
