@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Header, Label, Button, Table, Input } from 'semantic-ui-react';
 import Select from 'react-select';
-import { filter, findIndex, cloneDeep } from 'lodash';
+import { filter, findIndex, cloneDeep, minBy, indexOf } from 'lodash';
 // import ProxyBased from './ProxyBased'
 import 'semantic-ui-css/semantic.min.css';
 import './App.scss';
@@ -13,7 +13,7 @@ function App() {
   const [cachingInput, setCachingInput] = useState({
     broadcast: 'ABACAD',
     client_req: 'ABCBAA',
-    num_of_pages: '1',
+    num_of_pages: '2',
   });
   const [pix, setPix] = useState({});
 
@@ -59,32 +59,85 @@ function App() {
         (frequenciesHashMap[page] / cachingInput.broadcast.length);
       pixHashMap[page] = pix;
     });
-    setPix(pix);
-    calculatePIXSteps();
+    setPix(pixHashMap);
+    const steps = calculatePIXSteps(pixHashMap);
+    console.log(`PIX total steps: ${steps}`);
   };
 
-  const calculatePIXSteps = () => {
-    const clientReq = [...cachingInput.client_req];
-    const broadcast = [...cachingInput.broadcast];
-    const steps = [];
-    const cache = new Array(Number(cachingInput.num_of_pages)).fill('NULL');
-    while (clientReq.length) {
-      const dataForClient = clientReq[0];
-      if (cache.includes(dataForClient)) {
-        console.log(`${dataForClient} found in cache`);
+  const calculatePIXSteps = (
+    pixHashMap,
+    clientReq = [...cachingInput.client_req],
+    broadcastIndex = 0,
+    steps = 0,
+    cache = new Array(Number(cachingInput.num_of_pages)).fill('NULL'),
+    broadcast = [...cachingInput.broadcast]
+  ) => {
+    const itemServing = broadcast[broadcastIndex];
+    const itemNeeded = clientReq[0];
+    console.log(`Item serving: ${itemServing}; Item needed: ${itemNeeded};`);
+    if (clientReq.length === 0) return steps;
+    if (cache.includes(itemNeeded)) {
+      console.log(
+        `${itemNeeded} found in cache. Serving ${itemNeeded} from cache now.`
+      );
+      clientReq.shift();
+      return calculatePIXSteps(
+        pixHashMap,
+        clientReq,
+        broadcastIndex,
+        steps,
+        cache
+      );
+    } else {
+      if (itemNeeded === itemServing) {
         clientReq.shift();
-      } else {
-        for (let i = 0; i < broadcast.length; i += 1) {
-          const itemServing = broadcast[i];
-          if (itemServing === dataForClient) {
-            clientReq.shift();
-            const nullIndex = findIndex(cache, 'NULL');
-            if (nullIndex >= 0) cache[nullIndex] = dataForClient;
-          }
+        if (itemNeeded !== clientReq[0]) {
+          broadcastIndex += 1;
+          steps += 1;
         }
+      } else {
+        broadcastIndex += 1;
+        steps += 1;
       }
+      if (broadcastIndex > broadcast.length - 1) {
+        broadcastIndex = 0;
+      }
+      const cachedItems = cache
+        .filter((item) => item !== 'NULL')
+        .map((item) => ({ itemName: item, itemPIX: pixHashMap[item] }));
+      const leastPix = minBy(cachedItems, (item) => item.itemPIX);
+      console.log('leastPix', { cachedItems, leastPix });
+      const currentItemPix = pixHashMap[itemServing];
+      if (leastPix === undefined) {
+        cache[0] = itemServing;
+        console.log('Cache after update (initial): ', cache);
+      } else if (cachedItems.length < cache.length) {
+        const nullIndex = indexOf(cache, 'NULL');
+        if (nullIndex >= 0 && !cache.includes(itemServing)) {
+          cache[nullIndex] = itemServing;
+          console.log(`Adding ${itemServing} to cache at index ${nullIndex}`);
+          console.log('Cache after update (general): ', cache);
+        }
+      } else if (currentItemPix > leastPix.itemPIX) {
+        // console.log('Cache already full...updating cache based on PIX');
+        const leastPixCacheIndex = indexOf(cache, leastPix.itemName);
+        cache[leastPixCacheIndex] = itemServing;
+        console.log('Cache after update based on PIX: ', cache);
+      } else {
+        console.log('No changes in cache');
+      }
+      return calculatePIXSteps(
+        pixHashMap,
+        clientReq,
+        broadcastIndex,
+        steps,
+        cache
+      );
     }
   };
+
+  const cacheFrequency = getPageFrequencies(cachingInput.broadcast);
+  const cacheProbability = getPageFrequencies(cachingInput.client_req);
 
   return (
     <div className="App">
@@ -112,14 +165,14 @@ function App() {
             <>
               <div>
                 <div className="select-cache">
-                  <label>Broadcast</label>
+                  <div>Broadcast</div>
                   <Input
                     value={cachingInput.broadcast}
                     onChange={handleInputChange('broadcast')}
                   />
                 </div>
                 <div className="select-cache">
-                  <label>Client Request</label>
+                  <div>Client Request</div>
                   <Input
                     value={cachingInput.client_req}
                     onChange={handleInputChange('client_req')}
@@ -173,9 +226,53 @@ function App() {
           )}
         </div>
         {mode.value === 'CACHING' && (
-          <div style={{ display: 'flex' }}>
-            <div id="treeWrapper" style={{ width: '70%', marginLeft: '15px' }}>
-              Caching
+          <div style={{ width: '70%' }}>
+            <div id="treeWrapper" style={{ marginLeft: '15px' }}>
+              <h2>Caching</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+                <div>
+                  <h4>Access Probabilities</h4>
+                  {Object.keys(cacheProbability).length ? (
+                    <ul>
+                      {Object.keys(cacheProbability).map((item) => (
+                        <li>
+                          {item}: {cacheProbability[item]}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    ''
+                  )}
+                </div>
+                <div>
+                  <h4>Frequencies</h4>
+                  {Object.keys(cacheFrequency).length ? (
+                    <ul>
+                      {Object.keys(cacheFrequency).map((item) => (
+                        <li>
+                          {item}: {cacheFrequency[item]}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    ''
+                  )}
+                </div>
+                <div>
+                  <h4>PIX Values</h4>
+                  {Object.keys(pix).length ? (
+                    <ul>
+                      {Object.keys(pix).map((item) => (
+                        <li>
+                          {item}: {pix[item]}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    ''
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
