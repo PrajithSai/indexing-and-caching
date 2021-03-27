@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Header, Label, Button, Table, Input } from 'semantic-ui-react';
+import { Header, Button, Input } from 'semantic-ui-react';
 import Select from 'react-select';
-import { filter, findIndex, cloneDeep, minBy, indexOf } from 'lodash';
-// import ProxyBased from './ProxyBased'
+import { minBy, indexOf } from 'lodash';
+import 'react-perfect-scrollbar/dist/css/styles.css';
 import 'semantic-ui-css/semantic.min.css';
+import ScrollArea from 'react-perfect-scrollbar';
 import './App.scss';
 
 const TIMER = 3000;
@@ -16,6 +17,7 @@ function App() {
     num_of_pages: '2',
   });
   const [pix, setPix] = useState({});
+  const [pixSteps, setPixSteps] = useState([]);
 
   const getModeOptions = () => {
     return [
@@ -60,8 +62,13 @@ function App() {
       pixHashMap[page] = pix;
     });
     setPix(pixHashMap);
-    const steps = calculatePIXSteps(pixHashMap);
-    console.log(`PIX total steps: ${steps}`);
+    const { steps, pixLogs } = calculatePIXSteps(pixHashMap);
+    pixLogs.push(`
+    -----------------------------------------`);
+    pixLogs.push(`Total Steps: ${steps}`);
+    pixLogs.push(`-----------------------------------------`);
+    setPixSteps(pixLogs);
+    console.log(`PIX total steps: ${steps}, ${pixLogs}`);
   };
 
   const calculatePIXSteps = (
@@ -70,23 +77,32 @@ function App() {
     broadcastIndex = 0,
     steps = 0,
     cache = new Array(Number(cachingInput.num_of_pages)).fill('NULL'),
+    pixLogs = [],
     broadcast = [...cachingInput.broadcast]
   ) => {
     const itemServing = broadcast[broadcastIndex];
     const itemNeeded = clientReq[0];
-    console.log(`Item serving: ${itemServing}; Item needed: ${itemNeeded};`);
-    if (clientReq.length === 0) return steps;
+    pixLogs.push(`Item serving: ${itemServing}`);
+    pixLogs.push(`Item needed: ${itemNeeded}`);
+    if (clientReq.length === 0) return { steps, pixLogs };
     if (cache.includes(itemNeeded)) {
-      console.log(
-        `${itemNeeded} found in cache. Serving ${itemNeeded} from cache now.`
-      );
+      pixLogs.push(`${itemNeeded} found in cache.`);
+      pixLogs.push(`Serving ${itemNeeded} from cache now.`);
       clientReq.shift();
+      pixLogs.push(`***********************************************`);
+      pixLogs.push(`State after each iteration:`);
+      pixLogs.push(`Client Request: ${clientReq}`);
+      pixLogs.push(`Next Broadcast Item: ${broadcast[broadcastIndex]}`);
+      pixLogs.push(`Number of Steps: ${steps}`);
+      pixLogs.push(`Cache: ${cache}`);
+      pixLogs.push(`***********************************************`);
       return calculatePIXSteps(
         pixHashMap,
         clientReq,
         broadcastIndex,
         steps,
-        cache
+        cache,
+        pixLogs
       );
     } else {
       if (itemNeeded === itemServing) {
@@ -106,32 +122,39 @@ function App() {
         .filter((item) => item !== 'NULL')
         .map((item) => ({ itemName: item, itemPIX: pixHashMap[item] }));
       const leastPix = minBy(cachedItems, (item) => item.itemPIX);
-      console.log('leastPix', { cachedItems, leastPix });
       const currentItemPix = pixHashMap[itemServing];
       if (leastPix === undefined) {
         cache[0] = itemServing;
-        console.log('Cache after update (initial): ', cache);
+        pixLogs.push(`Cache after update (initial): ${cache}`);
       } else if (cachedItems.length < cache.length) {
         const nullIndex = indexOf(cache, 'NULL');
         if (nullIndex >= 0 && !cache.includes(itemServing)) {
           cache[nullIndex] = itemServing;
-          console.log(`Adding ${itemServing} to cache at index ${nullIndex}`);
-          console.log('Cache after update (general): ', cache);
+          pixLogs.push(`Adding ${itemServing} to cache at index ${nullIndex}`);
+          pixLogs.push(`Cache after update (general): ${cache}`);
         }
       } else if (currentItemPix > leastPix.itemPIX) {
         // console.log('Cache already full...updating cache based on PIX');
         const leastPixCacheIndex = indexOf(cache, leastPix.itemName);
         cache[leastPixCacheIndex] = itemServing;
-        console.log('Cache after update based on PIX: ', cache);
+        pixLogs.push(`Cache after update based on PIX: ${cache}`);
       } else {
-        console.log('No changes in cache');
+        pixLogs.push('No changes in cache');
       }
+      pixLogs.push(`***********************************************`);
+      pixLogs.push(`State after each iteration:`);
+      pixLogs.push(`Client Request: ${clientReq}`);
+      pixLogs.push(`Next Broadcast Item: ${broadcast[broadcastIndex]}`);
+      pixLogs.push(`Number of Steps: ${steps}`);
+      pixLogs.push(`Cache: ${cache}`);
+      pixLogs.push(`***********************************************`);
       return calculatePIXSteps(
         pixHashMap,
         clientReq,
         broadcastIndex,
         steps,
-        cache
+        cache,
+        pixLogs
       );
     }
   };
@@ -187,7 +210,7 @@ function App() {
                 </div>
                 <div className="select-cache cache-buttons">
                   <Button primary onClick={calculatePIX}>
-                    Get PIX
+                    Compare Caching Schemes
                   </Button>
                 </div>
               </div>
@@ -229,9 +252,15 @@ function App() {
           <div style={{ width: '70%' }}>
             <div id="treeWrapper" style={{ marginLeft: '15px' }}>
               <h2>Caching</h2>
-              <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-around',
+                  width: '50%',
+                }}
+              >
                 <div>
-                  <h4>Access Probabilities</h4>
+                  <h4>Access Probabilities (PIX)</h4>
                   {Object.keys(cacheProbability).length ? (
                     <ul>
                       {Object.keys(cacheProbability).map((item) => (
@@ -272,6 +301,19 @@ function App() {
                     ''
                   )}
                 </div>
+              </div>
+              <div
+                style={{
+                  width: '30%',
+                  borderRight: '1px solid silver',
+                }}
+              >
+                <h3>PIX Scheme Steps</h3>
+                <ScrollArea style={{ height: '60vh' }} suppressScrollX={false}>
+                  {pixSteps.map((step) => (
+                    <div>{step}</div>
+                  ))}
+                </ScrollArea>
               </div>
             </div>
           </div>
