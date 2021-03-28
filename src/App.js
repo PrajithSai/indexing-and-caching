@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Header, Button, Input } from 'semantic-ui-react';
 import Select from 'react-select';
-import { minBy, indexOf } from 'lodash';
+import { minBy, indexOf, uniq, max } from 'lodash';
 import 'react-perfect-scrollbar/dist/css/styles.css';
 import 'semantic-ui-css/semantic.min.css';
 import ScrollArea from 'react-perfect-scrollbar';
@@ -18,6 +18,9 @@ function App() {
   });
   const [pix, setPix] = useState({});
   const [pixSteps, setPixSteps] = useState([]);
+  const [lix, setLix] = useState({});
+  const [lixSteps, setLixSteps] = useState([]);
+  const [lixProbHashMap, setLixProbHashMap] = useState({});
 
   const getModeOptions = () => {
     return [
@@ -50,6 +53,76 @@ function App() {
     return pageFrequencies;
   };
 
+  const compareSchemes = () => {
+    calculatePIX();
+    calculateLIX();
+  };
+
+  const calculateLIX = () => {
+    const uniqBroadcastItems = uniq([...cachingInput.broadcast]);
+    const number_of_cols = cachingInput.broadcast.length;
+    let probabilityTable = new Array(uniqBroadcastItems.length).fill(0);
+    probabilityTable = probabilityTable.map((item, ind) => ({
+      name: uniqBroadcastItems[ind],
+      values: new Array(number_of_cols).fill(0),
+    }));
+    const finalProbability = probabilityTable.map((row) => {
+      const newRow = { ...row };
+      let timeLastAccessed = 0;
+      let itemLastProbability = 0;
+      const c = 1 / 2;
+      for (let i = 1; i <= number_of_cols; i += 1) {
+        const t = i;
+        const ti = i === 1 ? 0 : timeLastAccessed;
+        const pi = i === 1 ? 0 : itemLastProbability;
+        const currentItem = cachingInput.broadcast[i - 1];
+        const part1 = c / (t - ti);
+        const part2 = (1 - c) * pi;
+        let probability = part1 + part2;
+        if (currentItem === newRow.name) {
+          timeLastAccessed = i;
+          itemLastProbability = probability;
+        } else {
+          probability = itemLastProbability;
+        }
+        newRow.values[i] = Number(probability).toFixed(2);
+        // console.log(
+        //   `${row.name} => currentItem = ${currentItem}, t = ${t}, ti = ${ti}, pi = ${pi}, part1 = ${part1}, part2 = ${part2} probability = ${probability}`
+        // );
+      }
+      // newRow.values = newRow.values.slice(1);
+      return newRow;
+    });
+    const probabilityHashMap = {};
+    for (let i = 0; i < uniqBroadcastItems.length; i += 1) {
+      probabilityHashMap[finalProbability[i].name] = max(
+        finalProbability[i].values
+      );
+    }
+    const frequenciesHashMap = getPageFrequencies(cachingInput.broadcast);
+    const lixHashMap = {};
+    Object.keys(probabilityHashMap).map((page) => {
+      const lix = probabilityHashMap[page] / frequenciesHashMap[page];
+      lixHashMap[page] = Number(lix).toFixed(2);
+    });
+    console.log({
+      number_of_cols,
+      probabilityTable,
+      finalProbability,
+      probabilityHashMap,
+      lixHashMap,
+    });
+    setLixProbHashMap(probabilityHashMap);
+    setLix(lixHashMap);
+    const { steps, pixLogs } = calculateSteps(lixHashMap);
+    pixLogs.push(`
+    -----------------------------------------`);
+    pixLogs.push(`Total Steps: ${steps}`);
+    pixLogs.push(`-----------------------------------------`);
+    setLixSteps(pixLogs);
+    // console.log(`LIX total steps: ${steps}, ${pixLogs}`);
+  };
+
   const calculatePIX = () => {
     const frequenciesHashMap = getPageFrequencies(cachingInput.broadcast);
     const probabilitiesHashMap = getPageFrequencies(cachingInput.client_req);
@@ -59,19 +132,19 @@ function App() {
         probabilitiesHashMap[page] /
         cachingInput.client_req.length /
         (frequenciesHashMap[page] / cachingInput.broadcast.length);
-      pixHashMap[page] = pix;
+      pixHashMap[page] = Number(pix).toFixed(2);
     });
     setPix(pixHashMap);
-    const { steps, pixLogs } = calculatePIXSteps(pixHashMap);
+    const { steps, pixLogs } = calculateSteps(pixHashMap);
     pixLogs.push(`
     -----------------------------------------`);
     pixLogs.push(`Total Steps: ${steps}`);
     pixLogs.push(`-----------------------------------------`);
     setPixSteps(pixLogs);
-    console.log(`PIX total steps: ${steps}, ${pixLogs}`);
+    // console.log(`PIX total steps: ${steps}, ${pixLogs}`);
   };
 
-  const calculatePIXSteps = (
+  const calculateSteps = (
     pixHashMap,
     clientReq = [...cachingInput.client_req],
     broadcastIndex = 0,
@@ -96,7 +169,7 @@ function App() {
       pixLogs.push(`Number of Steps: ${steps}`);
       pixLogs.push(`Cache: ${cache}`);
       pixLogs.push(`***********************************************`);
-      return calculatePIXSteps(
+      return calculateSteps(
         pixHashMap,
         clientReq,
         broadcastIndex,
@@ -148,7 +221,7 @@ function App() {
       pixLogs.push(`Number of Steps: ${steps}`);
       pixLogs.push(`Cache: ${cache}`);
       pixLogs.push(`***********************************************`);
-      return calculatePIXSteps(
+      return calculateSteps(
         pixHashMap,
         clientReq,
         broadcastIndex,
@@ -209,7 +282,7 @@ function App() {
                   />
                 </div>
                 <div className="select-cache cache-buttons">
-                  <Button primary onClick={calculatePIX}>
+                  <Button primary onClick={compareSchemes}>
                     Compare Caching Schemes
                   </Button>
                 </div>
@@ -219,30 +292,51 @@ function App() {
           {mode.value === 'INDEXING' && (
             <>
               <div>
+                <h4>Entire Path</h4>
                 <div className="select-cache">
-                  <label>Select Request Source</label>
+                  <label>Enters at</label>
+                  <Select
+                    value={mode}
+                    onChange={setMode}
+                    options={getModeOptions()}
+                  />
+                </div>
+                <div className="select-cache">
+                  <label>Destination</label>
+                  <Select
+                    value={mode}
+                    onChange={setMode}
+                    options={getModeOptions()}
+                  />
                 </div>
                 <div className="select-cache cache-buttons">
                   <Button primary onClick={console}>
-                    Submit Request
+                    Get Entire Path
                   </Button>
                 </div>
               </div>
               <div>
-                <Header as="h3">Move MH</Header>
+                <h4>Partial Path</h4>
                 <div className="select-cache">
-                  <label>Select MH</label>
+                  <label>Enters at</label>
+                  <Select
+                    value={mode}
+                    onChange={setMode}
+                    options={getModeOptions()}
+                  />
                 </div>
                 <div className="select-cache">
-                  <label>Select MSS</label>
+                  <label>Destination</label>
+                  <Select
+                    value={mode}
+                    onChange={setMode}
+                    options={getModeOptions()}
+                  />
                 </div>
                 <div className="select-cache cache-buttons">
-                  <Button primary>Move</Button>
-                </div>
-              </div>
-              <div>
-                <div className="select-cache">
-                  <label>Select Token Location</label>
+                  <Button secondary onClick={console}>
+                    Get Partial Path
+                  </Button>
                 </div>
               </div>
             </>
@@ -256,64 +350,163 @@ function App() {
                 style={{
                   display: 'flex',
                   justifyContent: 'space-around',
-                  width: '50%',
+                  borderBottom: '1px solid silver',
+                  marginBottom: '10px',
                 }}
               >
-                <div>
-                  <h4>Access Probabilities (PIX)</h4>
-                  {Object.keys(cacheProbability).length ? (
-                    <ul>
-                      {Object.keys(cacheProbability).map((item) => (
-                        <li>
-                          {item}: {cacheProbability[item]}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    ''
-                  )}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-around',
+                    width: '50%',
+                    borderRight: '1px solid silver',
+                  }}
+                >
+                  <div>
+                    <h4>Access Probabilities (PIX)</h4>
+                    {Object.keys(cacheProbability).length ? (
+                      <ul>
+                        {Object.keys(cacheProbability).map((item) => (
+                          <li>
+                            {item}: {cacheProbability[item]}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      ''
+                    )}
+                  </div>
+                  <div>
+                    <h4>Frequencies</h4>
+                    {Object.keys(cacheFrequency).length ? (
+                      <ul>
+                        {Object.keys(cacheFrequency).map((item) => (
+                          <li>
+                            {item}: {cacheFrequency[item]}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      ''
+                    )}
+                  </div>
+                  <div>
+                    <h4>PIX Values</h4>
+                    {Object.keys(pix).length ? (
+                      <ul>
+                        {Object.keys(pix).map((item) => (
+                          <li>
+                            {item}: {pix[item]}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      ''
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h4>Frequencies</h4>
-                  {Object.keys(cacheFrequency).length ? (
-                    <ul>
-                      {Object.keys(cacheFrequency).map((item) => (
-                        <li>
-                          {item}: {cacheFrequency[item]}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    ''
-                  )}
-                </div>
-                <div>
-                  <h4>PIX Values</h4>
-                  {Object.keys(pix).length ? (
-                    <ul>
-                      {Object.keys(pix).map((item) => (
-                        <li>
-                          {item}: {pix[item]}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    ''
-                  )}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-around',
+                    width: '50%',
+                  }}
+                >
+                  <div>
+                    <h4>Access Probabilities (LIX)</h4>
+                    {Object.keys(lixProbHashMap).length ? (
+                      <ul>
+                        {Object.keys(lixProbHashMap).map((item) => (
+                          <li>
+                            {item}: {lixProbHashMap[item]}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      ''
+                    )}
+                  </div>
+                  <div>
+                    <h4>Frequencies</h4>
+                    {Object.keys(cacheFrequency).length ? (
+                      <ul>
+                        {Object.keys(cacheFrequency).map((item) => (
+                          <li>
+                            {item}: {cacheFrequency[item]}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      ''
+                    )}
+                  </div>
+                  <div>
+                    <h4>LIX Values</h4>
+                    {Object.keys(lix).length ? (
+                      <ul>
+                        {Object.keys(lix).map((item) => (
+                          <li>
+                            {item}: {lix[item]}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      ''
+                    )}
+                  </div>
                 </div>
               </div>
-              <div
-                style={{
-                  width: '30%',
-                  borderRight: '1px solid silver',
-                }}
-              >
-                <h3>PIX Scheme Steps</h3>
-                <ScrollArea style={{ height: '60vh' }} suppressScrollX={false}>
-                  {pixSteps.map((step) => (
-                    <div>{step}</div>
-                  ))}
-                </ScrollArea>
+              <div style={{}}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between' }}
+                >
+                  <div
+                    style={{
+                      borderRight: '1px solid silver',
+                      width: '30%',
+                    }}
+                  >
+                    <h3
+                      style={{
+                        borderBottom: '1px solid silver',
+                        paddingBottom: '5px',
+                      }}
+                    >
+                      PIX Scheme Steps
+                    </h3>
+                    <ScrollArea
+                      style={{ height: '60vh' }}
+                      suppressScrollX={false}
+                    >
+                      {pixSteps.map((step) => (
+                        <div>{step}</div>
+                      ))}
+                    </ScrollArea>
+                  </div>
+                  <div
+                    style={{
+                      borderRight: '1px solid silver',
+                      width: '30%',
+                    }}
+                  >
+                    <h3
+                      style={{
+                        borderBottom: '1px solid silver',
+                        paddingBottom: '5px',
+                      }}
+                    >
+                      LIX Scheme Steps
+                    </h3>
+                    <ScrollArea
+                      style={{ height: '60vh' }}
+                      suppressScrollX={false}
+                    >
+                      {lixSteps.map((step) => (
+                        <div>{step}</div>
+                      ))}
+                    </ScrollArea>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -322,7 +515,7 @@ function App() {
           <div>
             <div style={{ display: 'flex' }}>
               <div id="treeWrapper" style={{ marginLeft: '15px' }}>
-                Indexing
+                <h2>Indexing</h2>
               </div>
             </div>
           </div>
