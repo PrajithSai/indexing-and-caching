@@ -94,12 +94,12 @@ ul {
   list-style: none;
 }
 
-// .rd3t-link.link__to-leaf {
-//   fill: green;
-// }
-// .rd3t-link.link__to-branch {
-//   fill: red;
-// }
+.rd3t-link.link__to-leaf {
+  stroke: #6435c9;
+}
+.rd3t-link.link__to-branch {
+  stroke: #ff6500;
+}
 
 .rd3t-node.branch-node {
   fill: rgb(255, 174, 0);
@@ -108,13 +108,13 @@ ul {
   }
 }
 .rd3t-node.root-node {
-  fill: rgb(0, 255, 30);
+  fill: #ff6500;
   circle {
     r: 30px;
   }
 }
 .rd3t-leaf-node.leaf-node {
-  fill: rgb(221, 231, 34);
+  fill: #6435c9;
   circle {
     r: 20px;
   }

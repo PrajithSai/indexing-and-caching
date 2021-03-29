@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
 import { Header, Button, Input } from 'semantic-ui-react';
 import Select from 'react-select';
-import { minBy, indexOf, uniq, max, cloneDeep, findIndex } from 'lodash';
+import {
+  minBy,
+  indexOf,
+  uniq,
+  max,
+  cloneDeep,
+  findIndex,
+  uniqBy,
+} from 'lodash';
 import Tree from 'react-d3-tree';
 import { nodes } from './Nodes';
 import 'react-perfect-scrollbar/dist/css/styles.css';
@@ -29,7 +37,10 @@ function App() {
     partial: { entry: {}, dest: {} },
   });
   const [entirePath, setEntirePath] = useState('');
+  const [partialPath, setPartialPath] = useState('');
   const [level, setLevel] = useState({ label: '', value: '' });
+  const [allControlIndexes, setControlIndexes] = useState([]);
+  const [allGlobalIndexes, setGlobalIndexes] = useState({});
 
   const getModeOptions = () => {
     return [
@@ -42,6 +53,35 @@ function App() {
         value: 'INDEXING',
       },
     ];
+  };
+
+  const getDynamicPathClass = ({ source, target }, orientation) => {
+    if (!target.children) {
+      // Target node has no children -> this link leads to a leaf node.
+      return 'link__to-leaf';
+    }
+
+    // Style it as a link connecting two branch nodes by default.
+    return 'link__to-branch';
+  };
+
+  const renderRectSvgNode = ({ nodeDatum, toggleNode }) => {
+    const { levelByValue, valueByLevel } = getLevelHash(level.value);
+    return (
+      <g>
+        <rect width="20" height="20" x="-10" onClick={toggleNode} />
+        <text fill="black" strokeWidth="1" x="40">
+          {nodeDatum.name}
+        </text>
+        {(nodeDatum.name.startsWith('a') ||
+          nodeDatum.name.startsWith('b') ||
+          nodeDatum.name.startsWith('c')) && (
+          <text fill="black" x="20" dy="20" strokeWidth="1">
+            Level: {valueByLevel[nodeDatum.name]}
+          </text>
+        )}
+      </g>
+    );
   };
 
   function flatten(data, parentId = 'I') {
@@ -301,32 +341,75 @@ function App() {
     }
   };
 
-  const getEntirePath = () => {
+  const getEntirePath = ({
+    shouldSetPath = true,
+    entryPath = entryAndDest.entire.dest.value,
+  }) => {
     const traversePath = (dest, path) => {
       const index = findIndex(flattenedNodes, { name: dest });
       const currentNode = flattenedNodes[index];
-      console.log(currentNode);
+      // console.log({ currentNode, dest });
       if (currentNode && currentNode.name === currentNode.parentId) {
         path.push(currentNode.name);
         return path;
+      } else {
+        path.push(currentNode.name);
       }
-      path.push(currentNode.name);
       return traversePath(currentNode.parentId, path);
     };
-    const path = traversePath(entryAndDest.entire.dest.value, []);
-    setEntirePath(path.reverse().join(' -> '));
+    const path = traversePath(entryPath, []);
+    if (shouldSetPath) setEntirePath(path.reverse().join(' -> '));
+    return path;
     // console.log('Entire Path: ', path.reverse().join(' -> '));
   };
 
   const getChildrenByParent = (parentId) =>
     flattenedNodes.filter((node) => node.parentId === parentId);
 
-  const getLevelHash = (node) => {};
+  const getLevelHash = (node) => {
+    const levelByValue = {
+      Level1: ['a1', 'a2'],
+      Level2: ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'],
+      Level3: [
+        'c1',
+        'c2',
+        'c3',
+        'c4',
+        'c5',
+        'c6',
+        'c7',
+        'c8',
+        'c9',
+        'c10',
+        'c11',
+        'c12',
+        'c13',
+        'c14',
+        'c15',
+        'c16',
+        'c17',
+        'c18',
+      ],
+    };
+    const valueByLevel = {};
+    getLevelOptions().map((level) => {
+      let currentLevel;
+      if (level.value.includes('a')) currentLevel = 'Level1';
+      if (level.value.includes('b')) currentLevel = 'Level2';
+      if (level.value.includes('c')) currentLevel = 'Level3';
+      valueByLevel[level.value] = currentLevel;
+    });
+    return { levelByValue, valueByLevel };
+  };
 
   const getPartialPath = () => {
-    const levelHash = getLevelHash(level.value);
-    const replicationLevel = level.value;
-    let children = getChildrenByParent(replicationLevel);
+    const { levelByValue, valueByLevel } = getLevelHash(level.value);
+    const replicationLevel = levelByValue[valueByLevel[level.value]];
+    let children = [];
+    replicationLevel.map((level) => {
+      const levelChildren = getChildrenByParent(level);
+      children = [...children, ...levelChildren];
+    });
     children = children.map((child) => ({
       ...child,
       children: getChildrenByParent(child.name),
@@ -343,7 +426,55 @@ function App() {
         return grandChild.name;
       });
     }
-    console.log({ children });
+    children = children.map((child) => {
+      const temp = [
+        child.parentId,
+        child.name,
+        ...child.children,
+        ...child.data,
+      ];
+      return temp;
+    });
+    const controlIndexes = [];
+    let startRange = 0;
+    for (let i = 0; i < children.length; i += 1) {
+      const row = children[i];
+      const localControlIndex = i;
+      const globalControlIndex = Number(row[0].slice(1));
+      const endRange = Number(row[row.length - 1]);
+      controlIndexes.push({
+        globalControlIndex,
+        localControlIndex,
+        path: row,
+        startRange,
+        endRange,
+      });
+      startRange = endRange + 1;
+    }
+    const uniqueGlobalIndexes = uniqBy(controlIndexes, 'globalControlIndex');
+    const globalIndexes = {};
+    uniqueGlobalIndexes.map((ind) => {
+      const ranges = controlIndexes.filter(
+        (i) => ind.globalControlIndex === i.globalControlIndex
+      );
+      globalIndexes[ind.globalControlIndex] = {
+        startRange: ranges[0].startRange,
+        endRange: ranges[ranges.length - 1].endRange,
+      };
+    });
+    const shouldSetPath = false;
+    const entryPath = entryAndDest.partial.dest.value;
+    let path = getEntirePath({ shouldSetPath, entryPath });
+    path = path.reverse();
+    const destValue = Number(entryAndDest.partial.dest.value);
+    const I = controlIndexes.filter(
+      (ind) => destValue >= ind.startRange && destValue <= ind.endRange
+    );
+    path[0] = `I${I[0].globalControlIndex}`;
+    setPartialPath(path.join(' -> '));
+    setControlIndexes(controlIndexes);
+    setGlobalIndexes(globalIndexes);
+    console.log({ controlIndexes, globalIndexes, I, path });
   };
 
   const cacheFrequency = getPageFrequencies(cachingInput.broadcast);
@@ -577,7 +708,7 @@ function App() {
                   </div>
                 </div>
               </div>
-              <div style={{}}>
+              <div>
                 <div
                   style={{ display: 'flex', justifyContent: 'space-between' }}
                 >
@@ -637,7 +768,7 @@ function App() {
             <div style={{ display: 'flex', width: '100%' }}>
               <div
                 id="treeWrapper"
-                style={{ marginLeft: '15px', width: '100%', height: '35em' }}
+                style={{ marginLeft: '15px', width: '100%', height: '27em' }}
               >
                 <h2>Indexing</h2>
                 <Tree
@@ -647,10 +778,66 @@ function App() {
                   rootNodeClassName="root-node"
                   branchNodeClassName="branch-node"
                   leafNodeClassName="leaf-node"
+                  pathClassFunc={getDynamicPathClass}
+                  renderCustomNodeElement={renderRectSvgNode}
                 />
                 {entirePath !== '' && (
                   <div style={{ width: '80%', margin: '0 auto' }}>
                     <strong>Entire Path:</strong> {entirePath}
+                  </div>
+                )}
+                {partialPath !== '' && (
+                  <div style={{ width: '80%', margin: '0 auto' }}>
+                    <strong>Partial Path:</strong> {partialPath}
+                  </div>
+                )}
+                {allControlIndexes.length > 0 && (
+                  <div
+                    style={{
+                      width: '80%',
+                      margin: '10px auto',
+                    }}
+                  >
+                    <div>
+                      <ScrollArea
+                        style={{
+                          height: '30vh',
+                          display: 'flex',
+                          justifyContent: 'space-around',
+                        }}
+                        suppressScrollX={false}
+                      >
+                        <div>
+                          {allControlIndexes.map((ind) => (
+                            <div
+                              style={{
+                                border: '1px solid silver',
+                                padding: 7,
+                                margin: 10,
+                              }}
+                            >{`I${ind.globalControlIndex} | ${ind.path.join(
+                              ' | '
+                            )} ----- Range: ${ind.startRange} - ${
+                              ind.endRange
+                            }`}</div>
+                          ))}
+                        </div>
+                        <div>
+                          {Object.keys(allGlobalIndexes).length ? (
+                            <ul>
+                              {Object.keys(allGlobalIndexes).map((item) => (
+                                <li>
+                                  {item}:{' '}
+                                  {`${allGlobalIndexes[item].startRange} - ${allGlobalIndexes[item].endRange}`}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            ''
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
                   </div>
                 )}
               </div>
