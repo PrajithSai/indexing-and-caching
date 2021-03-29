@@ -17,8 +17,6 @@ import 'semantic-ui-css/semantic.min.css';
 import ScrollArea from 'react-perfect-scrollbar';
 import './App.scss';
 
-const TIMER = 3000;
-
 function App() {
   const [mode, setMode] = useState({ label: '', value: '' });
   const [cachingInput, setCachingInput] = useState({
@@ -150,14 +148,21 @@ function App() {
     setCachingInput(cachingInputClone);
   };
 
-  const getPageFrequencies = (content) => {
-    const pageFrequencies = {};
+  const getPageFrequencies = (content, isProbability = false) => {
+    let pageFrequencies = {};
     for (let i = 0; i < content.length; i += 1) {
       if (pageFrequencies[content[i]]) {
         pageFrequencies[content[i]] += 1;
       } else {
         pageFrequencies[content[i]] = 1;
       }
+    }
+    if (isProbability) {
+      Object.keys(pageFrequencies).map((freq) => {
+        pageFrequencies[freq] = Number(
+          pageFrequencies[freq] / content.length
+        ).toFixed(2);
+      });
     }
     return pageFrequencies;
   };
@@ -234,7 +239,10 @@ function App() {
 
   const calculatePIX = () => {
     const frequenciesHashMap = getPageFrequencies(cachingInput.broadcast);
-    const probabilitiesHashMap = getPageFrequencies(cachingInput.client_req);
+    const probabilitiesHashMap = getPageFrequencies(
+      cachingInput.client_req,
+      true
+    );
     const pixHashMap = {};
     Object.keys(probabilitiesHashMap).map((page) => {
       const pix =
@@ -478,7 +486,8 @@ function App() {
   };
 
   const cacheFrequency = getPageFrequencies(cachingInput.broadcast);
-  const cacheProbability = getPageFrequencies(cachingInput.client_req);
+  const cacheProbability = getPageFrequencies(cachingInput.client_req, true);
+  console.log({ cacheProbability });
   return (
     <div className="App">
       <div
