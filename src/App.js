@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Header, Button, Input } from 'semantic-ui-react';
 import Select from 'react-select';
-import { minBy, indexOf, uniq, max } from 'lodash';
+import { minBy, indexOf, uniq, max, cloneDeep, findIndex } from 'lodash';
+import Tree from 'react-d3-tree';
+import { nodes } from './Nodes';
 import 'react-perfect-scrollbar/dist/css/styles.css';
 import 'semantic-ui-css/semantic.min.css';
 import ScrollArea from 'react-perfect-scrollbar';
@@ -21,6 +23,13 @@ function App() {
   const [lix, setLix] = useState({});
   const [lixSteps, setLixSteps] = useState([]);
   const [lixProbHashMap, setLixProbHashMap] = useState({});
+  const [flattenedNodes, setFlattenedNodes] = useState(flatten([nodes]));
+  const [entryAndDest, setEntryAndDest] = useState({
+    entire: { entry: {}, dest: {} },
+    partial: { entry: {}, dest: {} },
+  });
+  const [entirePath, setEntirePath] = useState('');
+  const [level, setLevel] = useState({ label: '', value: '' });
 
   const getModeOptions = () => {
     return [
@@ -33,6 +42,66 @@ function App() {
         value: 'INDEXING',
       },
     ];
+  };
+
+  function flatten(data, parentId = 'I') {
+    return data.reduce((r, { children, name }) => {
+      r.push({ name, parentId });
+      if (children) r.push(...flatten(children, name));
+      return r;
+    }, []);
+  }
+
+  const getPathOptions = () => {
+    const options = [];
+    for (let i = 0; i < 54; i += 1) {
+      options.push({ label: i, value: String(i) });
+    }
+    return options;
+  };
+
+  const getLevelOptions = () => {
+    const options = [];
+    options.push({ label: 'a1', value: 'a1' });
+    options.push({ label: 'a2', value: 'a2' });
+    options.push({ label: 'b1', value: 'b1' });
+    options.push({ label: 'b2', value: 'b2' });
+    options.push({ label: 'b3', value: 'b3' });
+    options.push({ label: 'b4', value: 'b4' });
+    options.push({ label: 'b5', value: 'b5' });
+    options.push({ label: 'b6', value: 'b6' });
+    options.push({ label: 'c1', value: 'c1' });
+    options.push({ label: 'c2', value: 'c2' });
+    options.push({ label: 'c3', value: 'c3' });
+    options.push({ label: 'c4', value: 'c4' });
+    options.push({ label: 'c5', value: 'c5' });
+    options.push({ label: 'c6', value: 'c6' });
+    options.push({ label: 'c7', value: 'c7' });
+    options.push({ label: 'c8', value: 'c8' });
+    options.push({ label: 'c9', value: 'c9' });
+    options.push({ label: 'c10', value: 'c10' });
+    options.push({ label: 'c11', value: 'c11' });
+    options.push({ label: 'c12', value: 'c12' });
+    options.push({ label: 'c13', value: 'c13' });
+    options.push({ label: 'c14', value: 'c14' });
+    options.push({ label: 'c15', value: 'c15' });
+    options.push({ label: 'c16', value: 'c16' });
+    options.push({ label: 'c17', value: 'c17' });
+    options.push({ label: 'c18', value: 'c18' });
+    return options;
+  };
+
+  const handlePathChange = (type, pos) => (value) => {
+    const entryAndDestClone = cloneDeep(entryAndDest);
+    entryAndDestClone[type][pos] = value;
+    setEntryAndDest(entryAndDestClone);
+  };
+
+  const straightPathFunc = (linkDatum, orientation) => {
+    const { source, target } = linkDatum;
+    return orientation === 'horizontal'
+      ? `M${source.y},${source.x}L${target.y},${target.x}`
+      : `M${source.x},${source.y}L${target.x},${target.y}`;
   };
 
   const handleInputChange = (key) => (event) => {
@@ -232,9 +301,53 @@ function App() {
     }
   };
 
+  const getEntirePath = () => {
+    const traversePath = (dest, path) => {
+      const index = findIndex(flattenedNodes, { name: dest });
+      const currentNode = flattenedNodes[index];
+      console.log(currentNode);
+      if (currentNode && currentNode.name === currentNode.parentId) {
+        path.push(currentNode.name);
+        return path;
+      }
+      path.push(currentNode.name);
+      return traversePath(currentNode.parentId, path);
+    };
+    const path = traversePath(entryAndDest.entire.dest.value, []);
+    setEntirePath(path.reverse().join(' -> '));
+    // console.log('Entire Path: ', path.reverse().join(' -> '));
+  };
+
+  const getChildrenByParent = (parentId) =>
+    flattenedNodes.filter((node) => node.parentId === parentId);
+
+  const getLevelHash = (node) => {};
+
+  const getPartialPath = () => {
+    const levelHash = getLevelHash(level.value);
+    const replicationLevel = level.value;
+    let children = getChildrenByParent(replicationLevel);
+    children = children.map((child) => ({
+      ...child,
+      children: getChildrenByParent(child.name),
+    }));
+    for (let i = 0; i < children.length; i += 1) {
+      let child = children[i];
+      child.data = [];
+      child.children = child.children.map((grandChild) => {
+        const greatGrandChildren = getChildrenByParent(grandChild.name);
+        for (let i = 0; i < greatGrandChildren.length; i += 1) {
+          const data = greatGrandChildren[i];
+          child.data.push(data.name);
+        }
+        return grandChild.name;
+      });
+    }
+    console.log({ children });
+  };
+
   const cacheFrequency = getPageFrequencies(cachingInput.broadcast);
   const cacheProbability = getPageFrequencies(cachingInput.client_req);
-
   return (
     <div className="App">
       <div
@@ -296,21 +409,21 @@ function App() {
                 <div className="select-cache">
                   <label>Enters at</label>
                   <Select
-                    value={mode}
-                    onChange={setMode}
-                    options={getModeOptions()}
+                    value={entryAndDest.entire.entry}
+                    onChange={handlePathChange('entire', 'entry')}
+                    options={getPathOptions()}
                   />
                 </div>
                 <div className="select-cache">
                   <label>Destination</label>
                   <Select
-                    value={mode}
-                    onChange={setMode}
-                    options={getModeOptions()}
+                    value={entryAndDest.entire.dest}
+                    onChange={handlePathChange('entire', 'dest')}
+                    options={getPathOptions()}
                   />
                 </div>
                 <div className="select-cache cache-buttons">
-                  <Button primary onClick={console}>
+                  <Button primary onClick={getEntirePath}>
                     Get Entire Path
                   </Button>
                 </div>
@@ -320,21 +433,29 @@ function App() {
                 <div className="select-cache">
                   <label>Enters at</label>
                   <Select
-                    value={mode}
-                    onChange={setMode}
-                    options={getModeOptions()}
+                    value={entryAndDest.partial.entry}
+                    onChange={handlePathChange('partial', 'entry')}
+                    options={getPathOptions()}
                   />
                 </div>
                 <div className="select-cache">
                   <label>Destination</label>
                   <Select
-                    value={mode}
-                    onChange={setMode}
-                    options={getModeOptions()}
+                    value={entryAndDest.partial.dest}
+                    onChange={handlePathChange('partial', 'dest')}
+                    options={getPathOptions()}
+                  />
+                </div>
+                <div className="select-cache">
+                  <label>Level</label>
+                  <Select
+                    value={level}
+                    onChange={setLevel}
+                    options={getLevelOptions()}
                   />
                 </div>
                 <div className="select-cache cache-buttons">
-                  <Button secondary onClick={console}>
+                  <Button secondary onClick={getPartialPath}>
                     Get Partial Path
                   </Button>
                 </div>
@@ -512,10 +633,26 @@ function App() {
           </div>
         )}
         {mode.value === 'INDEXING' && (
-          <div>
-            <div style={{ display: 'flex' }}>
-              <div id="treeWrapper" style={{ marginLeft: '15px' }}>
+          <div style={{ width: '100%' }}>
+            <div style={{ display: 'flex', width: '100%' }}>
+              <div
+                id="treeWrapper"
+                style={{ marginLeft: '15px', width: '100%', height: '35em' }}
+              >
                 <h2>Indexing</h2>
+                <Tree
+                  data={nodes}
+                  orientation="vertical"
+                  separation={{ nonSiblings: 1, siblings: 1 }}
+                  rootNodeClassName="root-node"
+                  branchNodeClassName="branch-node"
+                  leafNodeClassName="leaf-node"
+                />
+                {entirePath !== '' && (
+                  <div style={{ width: '80%', margin: '0 auto' }}>
+                    <strong>Entire Path:</strong> {entirePath}
+                  </div>
+                )}
               </div>
             </div>
           </div>
