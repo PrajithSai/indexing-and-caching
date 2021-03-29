@@ -66,7 +66,7 @@ function App() {
   };
 
   const renderRectSvgNode = ({ nodeDatum, toggleNode }) => {
-    const { levelByValue, valueByLevel } = getLevelHash(level.value);
+    const { valueByLevel } = getLevelHash(level.value);
     return (
       <g>
         <rect width="20" height="20" x="-10" onClick={toggleNode} />
